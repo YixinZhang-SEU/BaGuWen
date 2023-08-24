@@ -44,6 +44,40 @@
 > - `AVG(rating <3)` rating<3用于判断，小于3就是返回1，否则返回0。AVG求平均就跟把1和0求和再除以行数是一样的结果
 > - `COUNT(条件）`不管记录是否满足条件表达式，只要非`NULL`就加1。所以应改为`SUM(state='approved')`,符合条件的就+1，或者`COUNT(IF(state='approved',1,null))`
 > - 对符合条件的字段求和不能使用`SUM(条件)`，这样只是计数
+> - `HAVING`是对分组后的数据进行过滤
+> - 日期加一天：`DATEADD(日期，INTERVAL 1 DAY)`
+
+
+
+## 排序和分组
+
+> - 聚合函数不能放在`where`后面，聚合函数要么放在`select`后面，要么放在`group by，having,order by`后面
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
