@@ -731,39 +731,169 @@ select * from performance_schema.data_locks\G
 
 
 
+## 日志
+
+- **undo log（回滚日志）**：是 Innodb 存储引擎层生成的日志，实现了事务中的**原子性**，主要**用于事务回滚和 MVCC**。
+- **redo log（重做日志）**：是 Innodb 存储引擎层生成的日志，实现了事务中的**持久性**，主要**用于掉电等故障恢复**；
+- **binlog （归档日志）**：是 Server 层生成的日志，主要**用于数据备份和主从复制**；
+
+### Undo Log
+
+- **插入**，把这条记录的主键值记下来，之后回滚时只需要把这个主键值对应的记录**删掉**；
+- **删除**，把这条记录中的内容都记下来，之后回滚时再把由这些内容组成的记录**插入**到表中；
+- **更新**，把被更新的列的旧值记下来，之后回滚时再把这些列**更新为旧值**。
+
+#### undo log 作用
+
+- 实现事务回滚，保障事务的原子性
+- 实现MVCC的关键因素之一
+
+
+
+### Redo Log
+
+为了防止断电导致Buffer Pool中的脏页丢失问题，InnoDB更新记录时会先更新内存（标记为脏页），然后将修改内容以redo log形式记录下来。后序，InnoDB再将Buffer Pool的脏页刷到磁盘里。**WAL(Write-Ahead Logging)技术： MySQL 的写操作并不是立刻写到磁盘上，而是先写日志，然后在合适的时间再写到磁盘上**。
+
+事务提交时先将redo log持久化到磁盘上，脏页可以先不刷盘。
+
+Buffer Pool的undo页也需要同步修改，且要记录对应的redo log。
+
+![img](MySQL.assets/wal.png)
 
 
 
 
 
+#### 为什么要多此一举有redo log（反正都是写到磁盘上）
+
+写入redo log是追加操作，是**顺序**写入磁盘；写入数据需要先找到写入位置，是**随机**写入磁盘。因此redo log写入磁盘的时间开销更小。
+
+#### redo log 作用
+
+- 实现事务的持久性，让MySQL有crash-safe(崩溃恢复)的能力
+- 将写操作从随机写变成顺序写，提升MySQL写入磁盘的性能
+
+#### redo log 的缓冲池：redo log buffer
+
+#### 缓存在redo log buffer里的redo log的刷盘时机
+
+- MySQL 正常关闭时；
+- 当 redo log buffer 中记录的写入量大于 redo log buffer 内存空间的一半时，会触发落盘；
+- InnoDB 的后台线程每隔 1 秒，将 redo log buffer 持久化到磁盘。
+- 每次事务提交时都将缓存在 redo log buffer 里的 redo log 直接持久化到磁盘（这个策略可由 innodb_flush_log_at_trx_commit 参数控制）。
 
 
 
+### binlog
+
+#### binlog与redo log区别
+
+**1. 适用对象不同**
+
+- binlog 是 MySQL 的 Server 层实现的日志，所有存储引擎都可以使用；
+- redo log 是 Innodb 存储引擎实现的日志；
+
+**2. 文件格式不同**
+
+- binlog有三种格式类型：statement（默认）、row、mixed
+  - statement记录SQL语句（逻辑日志），但有动态函数的问题
+  - row记录数据最终形式，但在批量更新情况下会出现文件过大问题
+  - mixed包含以上两种模式，自动选择适合的模式
+- redo log是物理日志，记录在某个数据页做了什么修改，例如对 XXX 表空间中的 YYY 数据页 ZZZ 偏移量的地方做了AAA 更新
+
+**3. 写入方式不同**
+
+- binlog追加写，会新建文件空间，不会覆盖，保存全量日志
+- redo log循环写，日志空间大小固定，写满就刷盘从头开始
+
+**4. 用途不同**
+
+- binlog用户主从复制、备份恢复
+- redo log用于掉电恢复等故障恢复
+
+#### 主从复制如何实现
+
+主库**写入binlog**，从库I/O线程**同步binlog**到中继日志relay log上，从库SQL线程**回放binlog**更新存储引擎的数据。
+
+![MySQL 主从复制过程](MySQL.assets/主从复制过程.drawio.png)
+
+实际业务过程中，写数据时可以只写主库，读数据时只读从库。
+
+#### 主从复制有哪些模型
+
+- **同步复制：**主库提交事务的线程要等待所有从库的复制成功响应，才返回客户端结果。性能太差，没法用。
+- **异步复制：**默认模型，缺点是如果主库宕机，数据就会丢失。
+- **半同步复制：**MySQL5.7后，介于二者之间。主库线程不用等待所有的从库复制成功响应，只要一部分复制成功响应回来就行。**兼顾了异步复制和同步复制的优点，即使出现主库宕机，至少还有一个从库有最新的数据，不存在数据丢失的风险**。
+
+#### binlog cache什么时候刷盘
+
+binlog cache存在于server层（内存中），每一个线程都拥有一哥binlog cache，事务提交时再把binlog cache写入到同一个binlog文件中。binlog文件还存在于操作系统缓存中，还需要持久化到磁盘。
 
 
 
+### 两阶段提交
+
+避免redo log和binlog写入半成功导致的主从不一致问题。
+
+准备阶段（prepare）、提交阶段（commit），准备阶段先写入redo log，提交阶段写入binlog，再设置redo log为提交状态。当出现崩溃时，查看redo log和binlog的标识是否一致。
+
+> redo log 可以在事务没提交之前持久化到磁盘，但是 binlog 必须在事务提交之后才可以持久化到磁盘。
+
+#### 组提交
+
+两阶段提交会导致磁盘I/O次数高，以及会造成锁竞争激烈，因此引入binlog组提交机制。当有多个事务提交的时候，会将多个 binlog 刷盘操作合并成一个，从而减少磁盘 I/O 的次数。
+
+prepare 阶段不变，只针对 commit 阶段，将 commit 阶段拆分为三个过程：
+
+- **flush 阶段**：多个事务按进入的顺序将 binlog 从 cache 写入文件（不刷盘）；
+- **sync 阶段**：对 binlog 文件做 fsync 操作（多个事务的 binlog 合并一次刷盘）；
+- **commit 阶段**：各个事务按顺序做 InnoDB commit 操作；
+
+这样锁就可以只锁每个队列，锁的粒度变小。
 
 
 
+### MySQL 磁盘 I/O 很高，有什么优化的方法？
+
+延迟binlog和redo log的刷盘时机。
+
+- 设置组提交的两个参数： `binlog_group_commit_sync_delay` 和 `binlog_group_commit_sync_no_delay_count` 参数，延迟 binlog 刷盘的时机，从而减少 binlog 的刷盘次数。
+- 将 `sync_binlog` 设置为大于 1 的值（比较常见是 100~1000），表示每次提交事务都 write，但累积 N 个事务后才 fsync，相当于延迟了 binlog 刷盘的时机。风险是主机掉电时会丢 N 个事务的 binlog 日志。
+- 将 `innodb_flush_log_at_trx_commit` 设置为 2。表示每次事务提交时，都只是缓存在 redo log buffer 里的 redo log 写到 redo log 文件，交由操作系统控制持久化到磁盘的时机。风险是主机掉电的时候会丢数据。
 
 
 
+## Buffer Pool缓存
 
+InnoDB存储引擎实现的缓冲池，存在于内存中。
 
+Buffer Pool缓存了数据页、索引页、插入缓存页、undo页、自适应哈希索引、锁信息。
 
+### 如何管理Buffer Pool
 
+#### 如何管理空闲页
 
+**Free 链表**（空闲链表）
 
+#### 如何管理脏页
 
+**Flush 链表**
 
+#### 如何提高缓存命中率
 
+LRU(Least recently used)算法，但简单LRU不能解决预读失效和Buffer Pool污染问题。
 
+##### 预读失效
 
+根据局部性原理，MySQL 在加载数据页时，会提前把它相邻的数据页一并加载进来，目的是为了减少磁盘 I/O。但是可能这些被提前加载进来的数据页，并没有被访问，相当于这个预读是白做了，这个就是预读失效。
 
+> **解决办法：**将LRU划分成两个区域：old区域和young区域。划分这两个区域后，预读的页就只需要加入到 old 区域的头部，当页被真正访问的时候，才将页插入 young 区域的头部。
 
+##### Buffer Pool污染
 
+当某一个 SQL 语句扫描了大量的数据时，在 Buffer Pool 空间比较有限的情况下，可能会将 Buffer Pool 里的所有页都替换出去，导致大量热数据被淘汰了，等这些热数据又被再次访问的时候，由于缓存未命中，就会产生大量的磁盘 I/O，MySQL 性能就会急剧下降，这个过程被称为 Buffer Pool 污染。
 
-
+> **解决办法：**提高进入young区域的门槛，判断数据停留在old区域的时间，如果后续的访问时间与第一次访问的时间**在某个时间间隔内**，那么该缓存页就**不会**被从 old 区域移动到 young 区域的头部；反之会移动到young头部。
 
 
 
