@@ -55,9 +55,51 @@
 
 
 
+## 高级查询和连接
 
-
-
+> - `CASE WHEN`用法示例：`SELECT x, y, z, CASE WHEN x+y>z && x+z>y && y+z>x THEN 'Yes' ELSE 'No' END AS xxx` 
+>
+> - 窗口函数：
+>
+>   ```mysql
+>   <窗口函数> over (partition by <用于分组的列名>
+>                   order by <用于排序的列名>)
+>   ```
+>   
+> - `COALESCE`是一个函数， (expression_1, expression_2, ...,expression_n)依次参考各参数表达式，遇到非null值即停止并返回该值。如果所有的表达式都是空值，最终将返回一个空值。使用`COALESCE`在于大部分包含空值的表达式最终将返回空值。
+>
+> - 自定义变量示例
+>
+>   ```mysql
+>   # 例1
+>   SELECT a.person_name
+>   FROM (
+>   	SELECT person_name, @pre := @pre + weight AS w
+>   	FROM Queue, (SELECT @pre := 0) tmp
+>   	ORDER BY turn
+>   ) a
+>   WHERE a.w <= 1000
+>   ORDER BY a.w DESC
+>   LIMIT 1
+>   # 例2
+>   select distinct Num as ConsecutiveNums
+>   from (
+>     select Num, 
+>       case 
+>         when @prev = Num then @count := @count + 1
+>         when (@prev := Num) is not null then @count := 1
+>       end as CNT
+>     from Logs, (select @prev := null,@count := null) as t
+>   ) as temp
+>   where temp.CNT >= 3
+>   ```
+>
+>   
+>
+> - `UNION`和`UNION ALL`区别
+>
+>   - `UNION`不包括重复行，相当于`DISTINCT`，会对结果进行排序
+>   - `UNION ALL`包括重复行，不会排序
 
 
 
