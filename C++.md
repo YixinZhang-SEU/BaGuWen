@@ -4,6 +4,28 @@
 > 1. 特化？
 > 1. `RAII` 模板类
 
+## 各数据类型占用的字节
+
+| 数据类型          | 32位系统占用字节 | 64位系统占用字节         |
+| ----------------- | ---------------- | ------------------------ |
+| char              | 1                | 1                        |
+| char*（指针变量） | 4                | <font color=red>8</font> |
+| short int         | 2                | 2                        |
+| int               | 4                | 4                        |
+| unsigned int      | 4                | 4                        |
+| float             | 4                | 4                        |
+| double            | 8                | 8                        |
+| long              | 4                | <font color=red>8</font> |
+| long long         | 8                | 8                        |
+| unsigned long     | 4                | <font color=red>8</font> |
+
+
+
+https://blog.csdn.net/qq_19887221/article/details/126265302
+
+
+
+
 
 
 #### 内存分区
