@@ -44,6 +44,12 @@ https://blog.csdn.net/qq_19887221/article/details/126265302
 
 
 
+内存泄漏
+
+> https://zhuanlan.zhihu.com/p/523628871?utm_id=0#:~:text=%E6%97%A5%E5%BF%97,%E5%88%86%E6%9E%90%E5%92%8C%E5%AE%9A%E4%BD%8D%E3%80%82
+
+
+
 #### 变量作用域
 
 全局变量extern、静态全局变量static（不用文件中要重新定义）、局部变量、静态局部变量
